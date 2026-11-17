@@ -63,8 +63,6 @@ st.markdown('<div class="main-sub">A Data Mining Approach to Entry and Exit Surv
 DEMO_COLS = {"B": "Age", "C": "Sex", "D": "Civil Status", "E": "Place of Residence",
              "G": "Type of Residence", "H": "College/Program", "I": "Year Level",
              "J": "Student Status", "K": "Awareness Channel"}
-TARGET_COL = "AY"
-SATISFACTION_COL = "AZ"
 
 POSITIVE_LEXICON = {
     "helpful", "grateful", "thankful", "beneficial", "good", "excellent", "great",
@@ -147,10 +145,31 @@ def prep_survey(raw, label):
     for c in df.columns:
         if df[c].dtype == object:
             df[c] = df[c].apply(strip_invisible)
+            
+    # Rename long question headers back to standard letter columns
+    col_map = {}
+    for c in df.columns:
+        c_low = c.lower()
+        if "age" in c_low and "B" not in col_map.values(): col_map[c] = "B"
+        elif "sex" in c_low and "C" not in col_map.values(): col_map[c] = "C"
+        elif "civil status" in c_low and "D" not in col_map.values(): col_map[c] = "D"
+        elif "place of residence" in c_low and "E" not in col_map.values(): col_map[c] = "E"
+        elif "type of residence" in c_low and "G" not in col_map.values(): col_map[c] = "G"
+        elif "college" in c_low and "H" not in col_map.values(): col_map[c] = "H"
+        elif "year level" in c_low and "I" not in col_map.values(): col_map[c] = "I"
+        elif "student status" in c_low and "J" not in col_map.values(): col_map[c] = "J"
+        elif "learn about" in c_low and "K" not in col_map.values(): col_map[c] = "K"
+        
+        # Map targets and satisfaction
+        elif "overall" in c_low and "rate" in c_low and "AY" not in col_map.values(): col_map[c] = "AY"
+        elif "satisfied" in c_low and "implementation" in c_low and "AZ" not in col_map.values(): col_map[c] = "AZ"
+        
+    df = df.rename(columns=col_map)
+
     report["duplicates"] = int(df.duplicated().sum())
     df = df.drop_duplicates().reset_index(drop=True)
     
-    # Detect text columns dynamically based on question keywords
+    # Detect text columns dynamically
     text_keywords = ["experience", "like most", "difficulties", "concern", "improvement", "suggestion"]
     text_cols = [c for c in df.columns if any(k in c.lower() for k in text_keywords)]
     
@@ -181,10 +200,9 @@ def prep_survey(raw, label):
     if "B" in df.columns:
         df["B"] = df["B"].where(df["B"].isin(AGE_WHITELIST), np.nan)
         
-    df["Overall_Rating"] = to_num(df[TARGET_COL]) if TARGET_COL in df.columns else np.nan
-    df["Satisfaction"] = to_num(df[SATISFACTION_COL]) if SATISFACTION_COL in df.columns else np.nan
+    df["Overall_Rating"] = to_num(df["AY"]) if "AY" in df.columns else np.nan
+    df["Satisfaction"] = to_num(df["AZ"]) if "AZ" in df.columns else np.nan
     
-    # Use dynamically found text columns
     if text_cols:
         combined_text = df[text_cols].fillna("").astype(str).agg(" ".join, axis=1)
     else:
@@ -513,7 +531,7 @@ with tabs[6]:
     else:
         warn("Satisfaction column or composite predictors are unavailable.")
     justify("Determinants are quantified via Pearson correlation between each composite predictor and the satisfaction "
-            "field (AZ), directly answering Chapter 1 Objective 4. Pearson is appropriate because satisfaction and the "
+            "field, directly answering Chapter 1 Objective 4. Pearson is appropriate because satisfaction and the "
             "composites are continuous scale-consistent measures and the objective is a linear association description.")
 
 with tabs[7]:
