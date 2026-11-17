@@ -146,7 +146,7 @@ def prep_survey(raw, label):
         if df[c].dtype == object:
             df[c] = df[c].apply(strip_invisible)
             
-    # Rename long question headers back to standard letter columns
+    # Map long question headers to standard letter columns
     col_map = {}
     for c in df.columns:
         c_low = c.lower()
@@ -159,33 +159,51 @@ def prep_survey(raw, label):
         elif "year level" in c_low and "I" not in col_map.values(): col_map[c] = "I"
         elif "student status" in c_low and "J" not in col_map.values(): col_map[c] = "J"
         elif "learn about" in c_low and "K" not in col_map.values(): col_map[c] = "K"
-        
-        # Map targets and satisfaction
         elif "overall" in c_low and "rate" in c_low and "AY" not in col_map.values(): col_map[c] = "AY"
         elif "satisfied" in c_low and "implementation" in c_low and "AZ" not in col_map.values(): col_map[c] = "AZ"
         
+    # Map Likert columns dynamically based on the numbered prefixes (e.g., "1. I am aware...")
+    likert_mappings = {
+        "L": "1. I am aware", "M": "2. I understand", "N": "3. I know that", "O": "4. The University provides", "P": "5. Information about",
+        "Q": "6. I know which", "R": "7. I know where", "S": "8. The process", "T": "9. The implementation", "U": "10. RA 10931",
+        "V": "1. Free tuition has", "W": "2. Free tuition allows", "X": "3. The implementation", "Y": "4. The program has", "Z": "5. The University properly",
+        "AA": "6. University personnel", "AB": "7. My experience", "AC": "8. The implementation", "AD": "9. The benefits",
+        "AE": "1. The University continues", "AF": "2. Faculty members", "AG": "3. The University provides", "AH": "4. Student support", "AI": "5. University personnel",
+        "AJ": "6. I can easily", "AK": "7. The University provides", "AL": "8. The University treats", "AM": "9. The University provides", "AN": "10. The University ensures",
+        "AO": "1. I experience difficulty understanding", "AP": "2. I have difficulty", "AQ": "3. I experience delays", "AR": "4. I experience difficulty communicating", "AS": "5. I am confused",
+        "AT": "6. I experience delays in receiving", "AU": "7. I experience financial", "AV": "8. I experience difficulty accessing", "AW": "9. I experience difficulty obtaining", "AX": "10. I experience other"
+    }
+    
+    for c in df.columns:
+        c_low = c.lower()
+        for letter, prefix in likert_mappings.items():
+            if prefix.lower() in c_low and letter not in col_map.values():
+                col_map[c] = letter
+                break
+                
     df = df.rename(columns=col_map)
 
     report["duplicates"] = int(df.duplicated().sum())
     df = df.drop_duplicates().reset_index(drop=True)
     
-    # Detect text columns dynamically
     text_keywords = ["experience", "like most", "difficulties", "concern", "improvement", "suggestion"]
     text_cols = [c for c in df.columns if any(k in c.lower() for k in text_keywords)]
     
-    likert = [c for c in df.columns if c in list("LMNOPQRSTUV") + [
-        "V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL",
-        "AM","AN","AO","AP","AQ","AR","AS","AT","AU","AV","AW","AX"]]
+    likert_letters = list("LMNOPQRSTUV") + ["V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN","AO","AP","AQ","AR","AS","AT","AU","AV","AW","AX"]
+    likert = [c for c in df.columns if c in likert_letters]
+    
     if likert:
         num = df[likert].apply(to_num)
         drop = num.isna().all(axis=1)
         report["dropped_all_likert"] = int(drop.sum())
         df = df.loc[~drop].reset_index(drop=True)
         num = num.loc[~drop].reset_index(drop=True)
+        
         aw = [c for c in list("LMNOPQRSTUV") if c in num.columns]
         fi = [c for c in ["V","W","X","Y","Z","AA","AB","AC","AD"] if c in num.columns]
         qu = [c for c in ["AE","AF","AG","AH","AI","AJ","AK","AL","AM","AN"] if c in num.columns]
         ch = [c for c in ["AO","AP","AQ","AR","AS","AT","AU","AV","AW","AX"] if c in num.columns]
+        
         df["Awareness_Score"] = num[aw].mean(axis=1) if aw else np.nan
         df["Financial_Score"] = num[fi].mean(axis=1) if fi else np.nan
         df["Quality_Score"] = num[qu].mean(axis=1) if qu else np.nan
@@ -543,9 +561,11 @@ with tabs[7]:
         heat.update_layout(height=440)
         st.plotly_chart(heat, use_container_width=True)
         upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool)).stack()
-        if not upper.empty:
+        if not upper.empty and not upper.isna().all():
             interp(f"Strongest positive pair: {upper.idxmax()[0]} vs {upper.idxmax()[1]} (r = {upper.max():.2f}). "
                    f"Strongest negative pair: {upper.idxmin()[0]} vs {upper.idxmin()[1]} (r = {upper.min():.2f}).")
+        else:
+            warn("Insufficient variance in the composite scores to compute correlations for the current selection.")
     cluster_cols = [c for c in ["Awareness_Score","Financial_Score","Quality_Score","Challenge_Score"] if c in filtered.columns]
     if len(cluster_cols) >= 2 and len(filtered) >= 3:
         X = filtered[cluster_cols].dropna()
