@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 
 from sklearn.feature_extraction.text import TfidfVectorizer, ENGLISH_STOP_WORDS
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
@@ -21,7 +21,7 @@ from sklearn.cluster import KMeans
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score,
-    confusion_matrix, classification_report,
+    confusion_matrix,
 )
 
 st.set_page_config(
@@ -60,11 +60,6 @@ st.markdown(
 st.markdown('<div class="main-title">Sentiment Analysis of Student Feedback on FHE and TES at Agusan del Sur State University</div>', unsafe_allow_html=True)
 st.markdown('<div class="main-sub">A Data Mining Approach to Entry and Exit Survey Feedback on RA 10931 Programs</div>', unsafe_allow_html=True)
 
-TEXT_COLS = ["BD", "BE", "BF", "BH"]
-TEXT_COL_NAMES = {
-    "BD": "Initial experience", "BE": "What they like most",
-    "BF": "Difficulties encountered", "BH": "Suggestions",
-}
 DEMO_COLS = {"B": "Age", "C": "Sex", "D": "Civil Status", "E": "Place of Residence",
              "G": "Type of Residence", "H": "College/Program", "I": "Year Level",
              "J": "Student Status", "K": "Awareness Channel"}
@@ -86,7 +81,6 @@ NEGATIVE_LEXICON = {
     "unclear", "frustrat", "disappoint", "complaint", "slow", "late", "limited",
     "kulang", "mahal", "mahirap", "problema", "hindi sapat",
 }
-NEUTRAL_LEXICON = {"neutral", "okay", "fine", "average", "normal"}
 
 AGE_WHITELIST = ["18–27", "28–37", "38–47"]
 RESIDENCE_WHITELIST = ["Agusan del Sur", "Agusan del Norte", "Surigao del Sur",
@@ -155,6 +149,11 @@ def prep_survey(raw, label):
             df[c] = df[c].apply(strip_invisible)
     report["duplicates"] = int(df.duplicated().sum())
     df = df.drop_duplicates().reset_index(drop=True)
+    
+    # Detect text columns dynamically based on question keywords
+    text_keywords = ["experience", "like most", "difficulties", "concern", "improvement", "suggestion"]
+    text_cols = [c for c in df.columns if any(k in c.lower() for k in text_keywords)]
+    
     likert = [c for c in df.columns if c in list("LMNOPQRSTUV") + [
         "V","W","X","Y","Z","AA","AB","AC","AD","AE","AF","AG","AH","AI","AJ","AK","AL",
         "AM","AN","AO","AP","AQ","AR","AS","AT","AU","AV","AW","AX"]]
@@ -176,13 +175,21 @@ def prep_survey(raw, label):
         report["dropped_all_likert"] = 0
         for c in ["Awareness_Score","Financial_Score","Quality_Score","Challenge_Score"]:
             df[c] = np.nan
+            
     if "E" in df.columns:
         df["E"] = df["E"].where(df["E"].isin(RESIDENCE_WHITELIST), "Other")
     if "B" in df.columns:
         df["B"] = df["B"].where(df["B"].isin(AGE_WHITELIST), np.nan)
+        
     df["Overall_Rating"] = to_num(df[TARGET_COL]) if TARGET_COL in df.columns else np.nan
     df["Satisfaction"] = to_num(df[SATISFACTION_COL]) if SATISFACTION_COL in df.columns else np.nan
-    combined_text = df[[c for c in TEXT_COLS if c in df.columns]].fillna("").astype(str).agg(" ".join, axis=1)
+    
+    # Use dynamically found text columns
+    if text_cols:
+        combined_text = df[text_cols].fillna("").astype(str).agg(" ".join, axis=1)
+    else:
+        combined_text = pd.Series([""] * len(df))
+        
     df["Feedback_Text"] = combined_text
     df["Feedback_Clean"] = combined_text.apply(normalize_text)
     df["Sentiment"] = combined_text.apply(lambda x: score_sentiment(x)[0])
@@ -266,16 +273,15 @@ with tabs[0]:
         "Cleaning executed independently per survey: duplicate-row removal; stripping of <br> tags and invisible Unicode; "
         "whitespace collapse; removal of records missing all Likert responses; age restricted to 18–27, 28–37, 38–47; "
         "residence mapped to Agusan del Sur, Agusan del Norte, Surigao del Sur, Surigao del Norte, Davao de Oro, Other; "
-        "N/A and blanks treated as missing. Text columns BD, BE, BF, BH are concatenated into a single feedback corpus, "
-        "normalized (lowercase, punctuation-stripped, stop-word-removed), and labeled Positive / Neutral / Negative using the "
-        "paper's specified lexicons."
+        "N/A and blanks treated as missing. Open-ended text columns are detected dynamically and concatenated into a single "
+        "feedback corpus, normalized, and labeled Positive / Neutral / Negative using the paper's specified lexicons."
     )
     rules = pd.DataFrame({
         "Rule": ["Duplicate removal","Whitespace/tag cleaning","All-Likert-missing drop",
                  "Age whitelist","Residence whitelist","N/A/blank → missing","Text corpus build",
                  "Sentiment labeling"],
         "Applied To": ["Both surveys","Both surveys, text","Likert blocks",
-                       "Column B","Column E","Rating/Likert columns","BD, BE, BF, BH",
+                       "Column B","Column E","Rating/Likert columns","Open-ended questions",
                        "Feedback_Clean"],
         "Entry Effect": [f"{entry_rep['duplicates']} removed","Stripped",f"{entry_rep['dropped_all_likert']} removed",
                          "Out-of-range→NaN","Non-whitelist→Other","Mapped to NaN","Concatenated","Lexicon-labeled"],
@@ -371,9 +377,6 @@ with tabs[3]:
         st.plotly_chart(bar, use_container_width=True)
         interp("Stacked bars reveal residence units whose Negative share is disproportionate. "
                "Those units are the priority targets for program communication and service improvement.")
-    for col in TEXT_COLS:
-        if col in exit_f.columns:
-            pass
     st.markdown("**Sample Sentiment-Labeled Responses**")
     sample = exit_f[exit_f["Feedback_Text"].str.len()>0][["E","Sentiment","Feedback_Text"]].head(10)
     st.dataframe(sample, use_container_width=True, hide_index=True)
