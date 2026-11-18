@@ -285,6 +285,7 @@ st.sidebar.markdown("---")
 st.sidebar.markdown(f"**Entry:** {entry_rep['final']} valid / {entry_rep['raw']} raw")
 st.sidebar.markdown(f"**Exit:** {exit_rep['final']} valid / {exit_rep['raw']} raw")
 
+# REMOVED "Determinants of Satisfaction" from the tabs list
 tabs = st.tabs([
     "Data Preprocessing & Validation",
     "Demographic & Educational Profile",
@@ -292,7 +293,6 @@ tabs = st.tabs([
     "Sentiment Distribution",
     "Sentiment Classification Model Comparison",
     "Recurring Themes & Issues",
-    "Determinants of Satisfaction",
     "Patterns, Correlations & Clustering",
     "Decision Support & Recommendations",
 ])
@@ -526,33 +526,6 @@ with tabs[5]:
                 "response if any of its cue terms appear, producing a mutually non-exclusive frequency profile.")
 
 with tabs[6]:
-    det_cols = [c for c in ["Awareness_Score","Financial_Score","Quality_Score","Challenge_Score","Overall_Rating"] if c in exit_df.columns]
-    if "Satisfaction" in exit_df.columns and len(det_cols) >= 2:
-        data = exit_df[det_cols + ["Satisfaction"]].dropna()
-        if len(data) >= 15:
-            corr = data.corr(method="pearson")["Satisfaction"].drop("Satisfaction").sort_values()
-            corr_df = corr.reset_index()
-            corr_df.columns = ["Determinant","Pearson r with Satisfaction"]
-            bar = px.bar(corr_df, x="Pearson r with Satisfaction", y="Determinant", orientation="h",
-                         title="Correlation of Each Determinant with Satisfaction",
-                         color="Pearson r with Satisfaction", color_continuous_scale="RdBu_r",
-                         range_color=[-1,1])
-            bar.update_layout(height=380, coloraxis_showscale=False)
-            st.plotly_chart(bar, use_container_width=True)
-            top_pos = corr.idxmax()
-            top_neg = corr.idxmin()
-            interp(f"Strongest positive determinant of satisfaction: {top_pos} (r = {corr.max():.2f}). "
-                   f"Strongest negative determinant: {top_neg} (r = {corr.min():.2f}). "
-                   "Determinants with |r| below 0.2 are weak and should not be treated as primary levers.")
-        else:
-            warn("Insufficient valid records to compute satisfaction determinants.")
-    else:
-        warn("Satisfaction column or composite predictors are unavailable.")
-    justify("Determinants are quantified via Pearson correlation between each composite predictor and the satisfaction "
-            "field, directly answering Chapter 1 Objective 4. Pearson is appropriate because satisfaction and the "
-            "composites are continuous scale-consistent measures and the objective is a linear association description.")
-
-with tabs[7]:
     corr_cols = [c for c in ["Awareness_Score","Financial_Score","Quality_Score","Challenge_Score","Overall_Rating"] if c in filtered.columns]
     if len(corr_cols) >= 2:
         corr = filtered[corr_cols].corr(method="pearson")
@@ -586,7 +559,7 @@ with tabs[7]:
                 "and perceptions. Standardization is required because composite scales, though nominally identical, "
                 "carry different variance profiles.")
 
-with tabs[8]:
+with tabs[7]:
     dec_cols = [c for c in ["Awareness_Score","Financial_Score","Quality_Score","Challenge_Score"] if c in filtered.columns]
     if len(dec_cols) >= 2 and "Overall_Rating" in filtered.columns and "E" in filtered.columns:
         data = filtered[dec_cols + ["Overall_Rating","E"]].dropna()
